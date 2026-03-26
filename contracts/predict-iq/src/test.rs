@@ -86,9 +86,7 @@ fn make_stored_market(e: &Env, id: u64) -> types::Market {
         oracle_config: types::OracleConfig {
             oracle_address: Address::generate(e),
             feed_id: String::from_str(e, "seeded_feed"),
-            min_responses: 1,
-            max_staleness_seconds: 300,
-            max_confidence_bps: 200,
+            min_responses: Some(1),
         },
         total_staked: 0,
         payout_mode: types::PayoutMode::Pull,
@@ -224,9 +222,7 @@ fn test_market_id_overflow_returns_error() {
         &types::OracleConfig {
             oracle_address: Address::generate(&e),
             feed_id: String::from_str(&e, "overflow_feed"),
-            min_responses: 1,
-            max_staleness_seconds: 300,
-            max_confidence_bps: 200,
+            min_responses: Some(1),
         },
         &types::MarketTier::Basic,
         &native_token,
@@ -266,9 +262,7 @@ fn test_market_id_collision_returns_error() {
         &types::OracleConfig {
             oracle_address: Address::generate(&e),
             feed_id: String::from_str(&e, "collision_feed"),
-            min_responses: 1,
-            max_staleness_seconds: 300,
-            max_confidence_bps: 200,
+            min_responses: Some(1),
         },
         &types::MarketTier::Basic,
         &native_token,
