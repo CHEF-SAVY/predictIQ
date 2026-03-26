@@ -6,8 +6,8 @@ use soroban_sdk::{contracttype, token, Address, Env};
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
-    Bet(u64, Address),     // market_id, bettor
-    Claimed(u64, Address), // market_id, bettor — set after claim
+    Bet(u64, Address, u32), // market_id, bettor, outcome
+    Claimed(u64, Address),  // market_id, bettor — set after claim
 }
 
 pub fn place_bet(
@@ -102,8 +102,8 @@ pub fn place_bet(
     existing_bet.outcome = outcome;
     market.total_staked += amount;
 
-    let outcome_stake = market.outcome_stakes.get(outcome).unwrap_or(0);
-    market.outcome_stakes.set(outcome, outcome_stake + amount);
+    let outcome_stake = markets::get_outcome_stake(e, market_id, outcome);
+    markets::set_outcome_stake(e, market_id, outcome, outcome_stake + amount);
 
     e.storage().persistent().set(&bet_key, &existing_bet);
     markets::update_market(e, market);
@@ -150,7 +150,7 @@ pub fn claim_winnings(
         .winning_outcome
         .ok_or(ErrorCode::MarketNotResolved)?;
 
-    let bet_key = DataKey::Bet(market_id, bettor.clone());
+    let bet_key = DataKey::Bet(market_id, bettor.clone(), winning_outcome);
     let claimed_key = DataKey::Claimed(market_id, bettor.clone());
 
     if e.storage().persistent().has(&claimed_key) {
@@ -170,10 +170,8 @@ pub fn claim_winnings(
     // Parimutuel payout: winner's proportional share of the total pool.
     // winnings = (bet.amount * total_staked) / winning_outcome_stake
     // Integer division truncates down, favouring the protocol.
-    let winning_outcome_stake = market
-        .outcome_stakes
-        .get(winning_outcome)
-        .unwrap_or(bet.amount); // fallback: return stake if no pool data
+    let winning_outcome_stake = markets::get_outcome_stake(e, market_id, winning_outcome);
+    let winning_outcome_stake = if winning_outcome_stake > 0 { winning_outcome_stake } else { bet.amount };
     let winnings = (bet.amount * market.total_staked) / winning_outcome_stake;
 
     // Transfer winnings to bettor
@@ -227,8 +225,8 @@ pub fn withdraw_refund(
 
     // Update market accounting to maintain accuracy
     market.total_staked = market.total_staked.saturating_sub(refund_amount);
-    let outcome_stake = market.outcome_stakes.get(bet_outcome).unwrap_or(0);
-    market.outcome_stakes.set(bet_outcome, outcome_stake.saturating_sub(refund_amount));
+    let outcome_stake = markets::get_outcome_stake(e, market_id, bet_outcome);
+    markets::set_outcome_stake(e, market_id, bet_outcome, outcome_stake.saturating_sub(refund_amount));
     markets::update_market(e, market);
 
     // Emit standardized RewardsClaimed event (refund variant)
