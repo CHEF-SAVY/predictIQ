@@ -103,7 +103,7 @@ impl PredictIQ {
     }
 
     pub fn withdraw_refund(e: Env, bettor: Address, market_id: u64) -> Result<i128, ErrorCode> {
-        crate::modules::cancellation::withdraw_refund(&e, bettor, market_id)
+        crate::modules::cancellation::withdraw_refund(&e, bettor, market_id, 0)
     }
 
     pub fn cancel_market_admin(e: Env, market_id: u64) -> Result<(), ErrorCode> {
