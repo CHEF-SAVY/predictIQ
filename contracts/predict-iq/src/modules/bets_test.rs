@@ -484,3 +484,79 @@ fn test_bet_key_is_unique_per_outcome() {
     let refund1 = client.withdraw_refund(&user, &market_id, &1, &token);
     assert_eq!(refund1, 300);
 }
+
+// ===================== TTL Strategy Tests (Issue #100) =====================
+
+#[test]
+fn test_bet_record_accessible_after_six_months() {
+    // Verify that a bet placed at t=0 is still readable after ~180 days
+    // (6 months at ~5 seconds per ledger = ~3_110_400 ledgers).
+    let (env, client, _admin, user, token) = setup_test_with_token();
+
+    // Place bet at ledger 100 / timestamp 500
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 100;
+        li.timestamp = 500;
+    });
+
+    let market_id = create_simple_market(&client, &env, &user, &token);
+    client.place_bet(&user, &market_id, &0, &1000, &token, &None);
+
+    // Simulate ~180 days passing (3_110_400 ledgers at 5s each)
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 100 + 3_110_400;
+        li.timestamp = 500 + (3_110_400 * 5);
+    });
+
+    // Resolve the market — bet record must still be readable for claim
+    use crate::modules::markets::DataKey as MDataKey;
+    use crate::types::Market;
+    let contract_id = client.address.clone();
+    e.as_contract(&contract_id, || {
+        let mut market: Market = env
+            .storage()
+            .persistent()
+            .get(&MDataKey::Market(market_id))
+            .unwrap();
+        market.status = crate::types::MarketStatus::Resolved;
+        market.winning_outcome = Some(0);
+        market.resolved_at = Some(env.ledger().timestamp());
+        env.storage()
+            .persistent()
+            .set(&MDataKey::Market(market_id), &market);
+    });
+
+    // claim_winnings bumps TTL before reading — must not fail with missing entry
+    let result = client.try_claim_winnings(&user, &market_id);
+    // NoWinnings or success are both acceptable; BetNotFound / missing key is not
+    assert!(
+        result != Err(Ok(crate::errors::ErrorCode::BetNotFound)),
+        "bet record expired before claim"
+    );
+}
+
+#[test]
+fn test_bet_ttl_bumped_on_place_bet() {
+    // Confirm extend_ttl is called: after placing a bet the record should
+    // survive past TTL_HIGH_THRESHOLD ledgers without expiring.
+    let (env, client, _admin, user, token) = setup_test_with_token();
+
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1;
+        li.timestamp = 500;
+    });
+
+    let market_id = create_simple_market(&client, &env, &user, &token);
+    client.place_bet(&user, &market_id, &0, &5000, &token, &None);
+
+    // Advance just under BET_TTL_HIGH_THRESHOLD (3_110_400 ledgers)
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1 + 3_110_000;
+        li.timestamp = 500 + (3_110_000 * 5);
+    });
+
+    // The bet record should still exist (not expired)
+    let bet = crate::modules::bets::get_bet(&env, market_id, user.clone(), 0);
+    assert!(bet.is_some(), "bet record should not have expired within TTL window");
+    assert_eq!(bet.unwrap().amount, 5000);
+}

@@ -160,5 +160,13 @@ pub const TTL_LOW_THRESHOLD: u32 = 17_280;   // ~1 day
 pub const TTL_HIGH_THRESHOLD: u32 = 1_555_200; // ~90 days
 pub const PRUNE_GRACE_PERIOD: u64 = 2_592_000; // 30 days in seconds
 
+/// Issue #100: Bet records must survive the full market lifecycle including
+/// extended dispute windows. A market can remain Disputed for up to 72 hours
+/// of voting, plus any admin fallback period. We set bet TTL to ~180 days so
+/// a record placed on day 0 is still readable when the winner claims on day 90+.
+/// Low threshold triggers a refresh when fewer than 90 days remain.
+pub const BET_TTL_LOW_THRESHOLD: u32 = 1_555_200;  // ~90 days  — refresh trigger
+pub const BET_TTL_HIGH_THRESHOLD: u32 = 3_110_400; // ~180 days — target lifetime
+
 pub const GOV_TTL_LOW_THRESHOLD: u32 = 1_555_200;  // ~90 days
 pub const GOV_TTL_HIGH_THRESHOLD: u32 = 3_110_400; // ~180 days
