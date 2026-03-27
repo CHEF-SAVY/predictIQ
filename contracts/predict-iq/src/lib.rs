@@ -6,6 +6,10 @@ mod modules;
 mod test;
 #[cfg(test)]
 mod query_tests;
+#[cfg(test)]
+mod test_tie_handling;
+#[cfg(test)]
+mod test_payout_mode_immutability;
 pub mod types;
 
 pub use errors::ErrorCode;
@@ -24,6 +28,10 @@ impl PredictIQ {
         base_fee: i128,
         guardians: Vec<crate::types::Guardian>,
     ) -> Result<(), ErrorCode> {
+        // Require the deployer's authorization to prevent front-running attacks.
+        // Only the account that deployed this contract can call initialize.
+        e.deployer().require_auth();
+
         if e.storage().persistent().has(&ConfigKey::Admin) {
             return Err(ErrorCode::AlreadyInitialized);
         }
@@ -34,7 +42,7 @@ impl PredictIQ {
 
         admin::set_admin(&e, admin);
         e.storage().persistent().set(&ConfigKey::BaseFee, &base_fee);
-        e.storage().persistent().set(
+        e.storage().instance().set(
             &ConfigKey::CircuitBreakerState,
             &CircuitBreakerState::Closed,
         );
@@ -164,6 +172,14 @@ impl PredictIQ {
 
     pub fn get_base_fee(e: Env) -> i128 {
         crate::modules::fees::get_base_fee(&e)
+    }
+
+    pub fn set_fee_admin(e: Env, fee_admin: Address) -> Result<(), ErrorCode> {
+        crate::modules::admin::set_fee_admin(&e, fee_admin)
+    }
+
+    pub fn get_fee_admin(e: Env) -> Option<Address> {
+        crate::modules::admin::get_fee_admin(&e)
     }
 
     pub fn get_revenue(e: Env, token: Address) -> i128 {
@@ -338,6 +354,11 @@ impl PredictIQ {
     /// Issue #13: Configurable timelock duration.
     pub fn set_timelock_duration(e: Env, seconds: u64) -> Result<(), ErrorCode> {
         crate::modules::governance::set_timelock_duration(&e, seconds)
+    }
+
+    /// Issue #13: Returns the currently active timelock duration in seconds.
+    pub fn get_timelock_duration(e: Env) -> u64 {
+        crate::modules::governance::get_timelock_duration(&e)
     }
 
     /// Issue #47: Permissionless prune after grace period.
